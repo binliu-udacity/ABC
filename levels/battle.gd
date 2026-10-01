@@ -11,6 +11,7 @@ const INK_AMOUNT := 50
 const PREP_TIME := 8.0
 const SPAWN_INTERVAL := 4.0
 const ARROW_SPEED := 8.0
+const BURN_DAMAGE := 10.0
 
 # 波次和出场列是原型试用值，列号从 0 开始。第一只卒从画面第三列出场。
 const WAVES: Array = [
@@ -21,9 +22,9 @@ const WAVES: Array = [
 	[["跳", 1], ["卒", 3], ["砂", 2]],
 	[["骨", 2], ["卒", 0], ["跳", 4]],
 	[["甲", 2], ["砂", 1], ["卒", 3]],
-	[["骨", 0], ["跳", 4], ["砂", 2], ["卒", 1]],
-	[["甲", 3], ["骨", 1], ["跳", 0], ["砂", 4]],
-	[["甲", 2], ["骨", 0], ["跳", 4], ["砂", 1], ["卒", 3]],
+	[["骨", 0], ["跳", 4], ["砂", 2], ["翼", 1]],
+	[["玄", 3], ["骨", 1], ["跳", 0], ["砂", 4]],
+	[["玄", 2], ["骨", 0], ["跳", 4], ["砂", 1], ["翼", 3]],
 ]
 
 var ink := 100
@@ -86,7 +87,8 @@ func spawn_enemy(kind: String, column: int) -> Dictionary:
 	var data: Dictionary = EnemyData.UNITS[kind]
 	var enemy := {"kind": kind, "col": column, "y": 0.5,
 		"hp": data.hp, "max_hp": data.hp, "attack_clock": 0.0,
-		"slow_left": 0.0, "target_row": -1}
+		"slow_left": 0.0, "permanent_speed": 1.0,
+		"burning": false, "burn_clock": 0.0, "target_row": -1}
 	enemies.append(enemy)
 	return enemy
 
@@ -111,6 +113,7 @@ func step(delta: float) -> void:
 		effect.left -= delta
 	effects = effects.filter(func(effect: Dictionary) -> bool: return float(effect.left) > 0.0)
 	_tick_waves(delta)
+	_tick_status(delta)
 	_tick_guards(delta)
 	_tick_arrows(delta)
 	_tick_enemies(delta)
@@ -133,6 +136,10 @@ func _tick_waves(delta: float) -> void:
 			spawn_index = 0
 			spawn_left = 0.0
 			feedback = "第 %d 波开始！" % wave
+			for entry in WAVES[wave - 1]:
+				if entry[0] == "翼":
+					feedback += " 翼会飞过守兵，需要电或闪防空。"
+					break
 	if phase == "combat":
 		spawn_left -= delta
 		while spawn_left <= 0.0 and spawn_index < WAVES[wave - 1].size():
@@ -154,18 +161,50 @@ func _tick_guards(delta: float) -> void:
 				guard.clock -= float(data.interval)
 				ink += 50
 				effects.append({"col": guard.col, "y": float(guard.row) + 0.5, "left": 0.7, "kind": "ink"})
-		elif kind in ["弓", "冰"]:
+		elif kind in ["弓", "冰", "焰", "霜", "弩", "电", "闪"]:
 			if float(guard.clock) >= float(data.interval) and _has_target(guard):
 				guard.clock = 0.0
-				arrows.append({"col": guard.col, "y": float(guard.row) + 0.2, "kind": kind, "damage": data.damage})
+				if kind in ["电", "闪"]:
+					if kind == "电":
+						effects.append({"kind": "column_beam", "col": guard.col, "y": 0.0, "left": 0.18})
+					for enemy in enemies:
+						if _in_range(guard, enemy):
+							enemy.hp -= float(data.damage)
+							if kind == "闪":
+								effects.append({"kind": "beam", "from_col": guard.col,
+									"from_y": float(guard.row) + 0.5, "col": enemy.col,
+									"y": enemy.y, "left": 0.18})
+				else:
+					arrows.append({"col": guard.col, "y": float(guard.row) + 0.2, "kind": kind, "damage": data.damage})
 			else:
 				guard.clock = minf(float(guard.clock), float(data.interval))
 
 func _has_target(guard: Dictionary) -> bool:
 	for enemy in enemies:
-		if float(enemy.hp) > 0.0 and int(enemy.col) == int(guard.col) and float(enemy.y) < float(guard.row) + 0.5:
+		if _in_range(guard, enemy):
 			return true
 	return false
+
+func _can_damage(kind: String, enemy: Dictionary) -> bool:
+	return enemy.kind != "翼" or kind in ["电", "闪"]
+
+func _in_range(guard: Dictionary, enemy: Dictionary) -> bool:
+	if float(enemy.hp) <= 0.0 or not _can_damage(str(guard.kind), enemy):
+		return false
+	if guard.kind == "闪":
+		return true
+	if int(enemy.col) != int(guard.col):
+		return false
+	return guard.kind == "电" or float(enemy.y) < float(guard.row) + 0.5
+
+func _tick_status(delta: float) -> void:
+	for enemy in enemies:
+		if float(enemy.hp) <= 0.0 or not bool(enemy.burning):
+			continue
+		enemy.burn_clock += delta
+		while float(enemy.burn_clock) >= 1.0 - 0.000001:
+			enemy.burn_clock = maxf(0.0, float(enemy.burn_clock) - 1.0)
+			enemy.hp -= BURN_DAMAGE
 
 func _tick_arrows(delta: float) -> void:
 	var remaining: Array = []
@@ -174,7 +213,7 @@ func _tick_arrows(delta: float) -> void:
 		arrow.y -= ARROW_SPEED * delta
 		var target: Dictionary = {}
 		for enemy in enemies:
-			if float(enemy.hp) <= 0.0 or int(enemy.col) != int(arrow.col):
+			if float(enemy.hp) <= 0.0 or int(enemy.col) != int(arrow.col) or not _can_damage(str(arrow.kind), enemy):
 				continue
 			if float(enemy.y) >= float(arrow.y) - 0.22 and float(enemy.y) <= old_y + 0.22:
 				if target.is_empty() or float(enemy.y) > float(target.y):
@@ -183,6 +222,12 @@ func _tick_arrows(delta: float) -> void:
 			target.hp -= float(arrow.damage)
 			if arrow.kind == "冰":
 				target.slow_left = 10.0 # 重复命中刷新时间，不叠加减速。
+			elif arrow.kind == "霜":
+				target.permanent_speed = 0.8 # 永久生效一次，不逐箭叠加。
+			elif arrow.kind == "焰":
+				if not bool(target.burning):
+					target.burn_clock = 0.0
+				target.burning = true # 一直燃烧到死亡，重复命中不叠加。
 		elif float(arrow.y) >= 0.0:
 			remaining.append(arrow)
 	arrows = remaining
@@ -197,12 +242,16 @@ func _tick_enemies(delta: float) -> void:
 		if enemy.kind == "骨" and float(enemy.hp) < float(enemy.max_hp) * 0.5:
 			speed = 0.7
 			damage = 44.0
+		var speed_factor: float = enemy.permanent_speed
 		if float(enemy.slow_left) > 0.0:
-			speed *= 0.5
+			speed_factor = minf(speed_factor, 0.5)
+		speed *= speed_factor
 		enemy.slow_left = maxf(0.0, float(enemy.slow_left) - delta)
 		var destination: float = float(enemy.y) + speed * delta
 		var blocker: Dictionary = {}
 		for guard in guards:
+			if enemy.kind == "翼":
+				break # 飞过所有守兵，不攻击，也不触发雷。
 			if float(guard.hp) <= 0.0 or int(guard.col) != int(enemy.col):
 				continue
 			if enemy.kind == "跳" and guard.kind == "盾":
@@ -235,7 +284,7 @@ func _tick_enemies(delta: float) -> void:
 func _explode(guard: Dictionary) -> void:
 	guard.hp = 0.0
 	for enemy in enemies:
-		if int(enemy.col) == int(guard.col) and floori(float(enemy.y)) == int(guard.row):
+		if int(enemy.col) == int(guard.col) and floori(float(enemy.y)) == int(guard.row) and _can_damage("雷", enemy):
 			enemy.hp -= 1800.0
 	effects.append({"col": guard.col, "y": float(guard.row) + 0.5, "left": 0.6, "kind": "blast"})
 	feedback = "雷爆炸了！只伤害所在格内的敌人。"

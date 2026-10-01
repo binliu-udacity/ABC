@@ -36,6 +36,7 @@
 - 点击守兵卡，再点击棋盘放置；顶部出生行不能放兵。
 - 点击“开始守卷”，共 10 波；漏过一个敌人即失败。
 - 初始 100 墨滴，每 10 秒自动增加 50 滴。
+- 十种守兵、七种敌人；第 8 波起有飞行敌人“翼”，需电或闪防空，第 9 波起有高生命敌人“玄”。
 - **P** 暂停/继续，**Esc / 右键**取消选择；按钮可以重新开始。
 - 完整规则和浏览器导出步骤见 [首版规则与试玩说明](docs/specs/first_playable.md)。
 
@@ -45,8 +46,8 @@
 |---|---|
 | `levels/main.tscn` / `main.gd` | 主场景、棋盘绘制、卡牌和操作界面 |
 | `levels/battle.gd` | 战斗、墨滴、波次、胜负规则 |
-| `player/guard_data.gd` | 五种守兵的数值 |
-| `enemies/enemy_data.gd` | 五种敌人的数值 |
+| `player/guard_data.gd` | 十种守兵的数值 |
+| `enemies/enemy_data.gd` | 七种敌人的数值 |
 | `export_presets.cfg` | 单线程 Web 导出预设 |
 | `assets/fonts/` | 开源中文字体及许可证 |
 

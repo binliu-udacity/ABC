@@ -2,23 +2,27 @@ extends Control
 
 const Battle = preload("res://levels/battle.gd")
 const GuardData = preload("res://player/guard_data.gd")
+const GuardCard = preload("res://ui/guard_card.gd")
 const FONT = preload("res://assets/fonts/noto_sans_sc_medium.tres")
-const ORIGIN := Vector2(70, 128)
-const CELL := Vector2(96, 56)
-const BOARD := Rect2(ORIGIN, Vector2(480, 616))
+const ORIGIN := Vector2(50, 88)
+const CELL := Vector2(140, 62)
+const BOARD := Rect2(ORIGIN, Vector2(700, 682))
 const INK_COLOR := Color("263c43")
 const MUTED := Color("6c7777")
 const ACCENT := Color("aa583c")
-const GUARD_COLORS: Dictionary = {
-	"砚": Color("476d63"), "弓": Color("386779"), "盾": Color("807353"),
-	"冰": Color("4894b2"), "雷": Color("946238"),
-}
+const GUARD_COLOR := Color("278047")
+const ENEMY_COLOR := Color("c43b32")
 const DESCRIPTIONS: Dictionary = {
 	"砚": "每 30 秒产出 50 墨滴 · 生命 60",
 	"弓": "每秒一箭，伤害 30 · 生命 80",
 	"盾": "挡住敌人 · 生命 1200 · 跳会穿过",
 	"冰": "每秒一箭，伤害 30 · 减速 50%，持续 10 秒",
 	"雷": "准备 15 秒，接触引爆 · 本格伤害 1800 · 生命 60",
+	"焰": "每秒一箭，伤害 38 · 永久灼烧，每秒 10",
+	"霜": "每秒水弹，伤害 35 · 永久减速 20%，不叠加",
+	"弩": "每 0.75 秒一箭，伤害 32 · 生命 80",
+	"电": "每秒对整列敌人造成 28 伤害 · 可攻击翼",
+	"闪": "每秒对全场敌人造成 25 伤害 · 可攻击翼",
 }
 
 var battle = Battle.new()
@@ -48,32 +52,37 @@ func _ready() -> void:
 	_refresh_ui()
 
 func _build_ui() -> void:
-	_label("诗词塔防：守卷之役", Vector2(64, 28), Vector2(750, 45), 32)
-	_label("十波守卷  /  父子共创第一版", Vector2(66, 78), Vector2(500, 30), 16, MUTED)
-	wave_label = _label("", Vector2(640, 30), Vector2(480, 42), 24)
-	ink_label = _label("", Vector2(640, 85), Vector2(480, 42), 30)
-	status_label = _label("", Vector2(640, 132), Vector2(480, 48), 17, MUTED)
-	_label("选择守兵", Vector2(640, 190), Vector2(480, 30), 20)
-	var card_y := 230.0
+	_label("诗词塔防：守卷之役", Vector2(44, 12), Vector2(730, 45), 30)
+	_label("十波守卷  /  父子共创第一版", Vector2(46, 56), Vector2(500, 26), 15, MUTED)
+	wave_label = _label("", Vector2(820, 24), Vector2(320, 36), 20)
+	ink_label = _label("", Vector2(820, 70), Vector2(320, 42), 28)
+	status_label = _label("", Vector2(820, 126), Vector2(320, 60), 15, MUTED)
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_label("字兵库", Vector2(820, 188), Vector2(320, 28), 20)
+	var card_index := 0
 	for kind in GuardData.UNITS:
-		var button := _button("", Vector2(640, card_y), Vector2(490, 62))
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var button := GuardCard.new()
+		button.kind = str(kind)
+		button.price = int(GuardData.UNITS[kind].cost)
+		button.position = Vector2(820 + (card_index % 3) * 100, 224 + floori(card_index / 3.0) * 100)
+		button.size = Vector2(88, 88)
 		button.tooltip_text = DESCRIPTIONS[kind]
 		button.pressed.connect(_select.bind(str(kind)))
+		add_child(button)
 		cards[kind] = button
-		card_y += 72.0
-	selection_label = _label("", Vector2(640, 597), Vector2(490, 65), 17)
+		card_index += 1
+	selection_label = _label("", Vector2(820, 626), Vector2(320, 68), 15)
 	selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	begin_button = _button("开始守卷", Vector2(640, 680), Vector2(230, 50))
+	begin_button = _button("开始守卷", Vector2(820, 704), Vector2(152, 42))
 	begin_button.pressed.connect(_begin)
-	pause_button = _button("暂停", Vector2(890, 680), Vector2(240, 50))
+	pause_button = _button("暂停", Vector2(984, 704), Vector2(152, 42))
 	pause_button.pressed.connect(_toggle_pause)
-	var restart := _button("重新开始", Vector2(640, 744), Vector2(230, 44))
+	var restart := _button("重新开始", Vector2(820, 758), Vector2(152, 42))
 	restart.pressed.connect(_restart)
-	var cancel := _button("取消选择", Vector2(890, 744), Vector2(240, 44))
+	var cancel := _button("取消选择", Vector2(984, 758), Vector2(152, 42))
 	cancel.pressed.connect(_select.bind(""))
-	message_label = _label("", Vector2(64, 800), Vector2(1070, 40), 17, ACCENT)
-	_label("诗卷底线 · 漏过一个敌人就失败", Vector2(70, 752), Vector2(480, 30), 17, ACCENT)
+	message_label = _label("", Vector2(44, 820), Vector2(1090, 30), 16, ACCENT)
+	_label("诗卷底线 · 漏过一个敌人就失败", Vector2(50, 778), Vector2(700, 28), 16, ACCENT)
 	result_panel = Panel.new()
 	result_panel.position = Vector2(270, 270)
 	result_panel.size = Vector2(660, 260)
@@ -188,16 +197,17 @@ func _refresh_ui() -> void:
 	if paused:
 		state = "已暂停 · 点击继续按钮恢复"
 	status_label.text = "%s\n每 10 秒 +50 墨滴 · 下次 %d 秒" % [state, ceili(10.0 - battle.ink_clock)]
+	var preview_index: int = battle.wave - 1 if battle.phase == "combat" else battle.wave
+	if preview_index >= 0 and preview_index < Battle.WAVES.size():
+		for entry in Battle.WAVES[preview_index]:
+			if entry[0] == "翼":
+				status_label.text += "\n防空：翼只能被电 / 闪攻击"
+				break
 	message_label.text = battle.feedback
 	for kind in cards:
 		var data: Dictionary = GuardData.UNITS[kind]
 		var cooldown: float = battle.cooldowns[kind]
-		var suffix := ""
-		if cooldown > 0.0:
-			suffix = " · 冷却 %ds" % ceili(cooldown)
-		elif battle.ink < int(data.cost):
-			suffix = " · 墨滴不足"
-		cards[kind].text = "%s %s    %d 墨滴%s" % ["●" if kind == selected else "○", kind, int(data.cost), suffix]
+		cards[kind].update_state(cooldown, float(data.cooldown), battle.ink >= int(data.cost), kind == selected)
 	selection_label.text = "点击卡牌，再点击棋盘放置。右键 / Esc 取消。"
 	if not selected.is_empty():
 		selection_label.text = "已选「%s」\n%s" % [selected, DESCRIPTIONS[selected]]
@@ -211,7 +221,7 @@ func _refresh_ui() -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color("f7f1e4"))
-	draw_rect(Rect2(610, 20, 550, 774), Color("eee4ce"))
+	draw_rect(Rect2(798, 16, 366, 792), Color("eee4ce"))
 	var counts: Array = battle.next_wave_counts()
 	for row in range(11):
 		for column in range(5):
@@ -226,53 +236,84 @@ func _draw() -> void:
 				if battle.phase in ["ready", "prep"]:
 					caption = "下波 %d" % counts[column]
 				_center_text(caption, rect.get_center(), 16, MUTED)
-		_center_text(str(11 - row), Vector2(47, ORIGIN.y + (row + 0.5) * CELL.y), 15, MUTED)
+		_center_text(str(11 - row), Vector2(28, ORIGIN.y + (row + 0.5) * CELL.y), 15, MUTED)
 	if hover.x >= 0 and hover.x < 5 and hover.y >= 0 and hover.y < 11 and not selected.is_empty():
 		var hover_rect := Rect2(ORIGIN + Vector2(hover) * CELL, CELL)
 		var valid := hover.y > 0 and battle.guard_at(hover.x, hover.y).is_empty()
 		draw_rect(hover_rect.grow(-2), Color(0.2, 0.5, 0.4, 0.18) if valid else Color(0.8, 0.2, 0.2, 0.2))
 	for guard in battle.guards:
 		var at := _board_position(int(guard.col), float(guard.row) + 0.5) + Vector2(-12, 0)
-		var color: Color = GUARD_COLORS[guard.kind]
-		draw_circle(at, 21, color)
-		_center_text(str(guard.kind), at, 28, Color("fff8e7"))
-		_health_bar(at + Vector2(-23, 22), 46, float(guard.hp) / float(guard.max_hp), Color("57816b"))
+		_center_text(str(guard.kind), at, 36, GUARD_COLOR)
+		_health_bar(at + Vector2(-23, 22), 46, float(guard.hp) / float(guard.max_hp), GUARD_COLOR)
 		if guard.kind == "雷":
 			var ready := float(guard.age) >= 15.0
 			_center_text("就绪" if ready else str(ceili(15.0 - float(guard.age))), at + Vector2(34, 6), 13, ACCENT)
 	for enemy in battle.enemies:
 		var at := _board_position(int(enemy.col), float(enemy.y)) + Vector2(17, 0)
-		var color := Color("a74739")
+		var color := ENEMY_COLOR
 		if enemy.kind == "骨" and float(enemy.hp) < float(enemy.max_hp) / 2.0:
-			color = Color("db372c")
-		elif enemy.kind == "甲":
-			color = Color("68616a")
-		elif enemy.kind == "跳":
-			color = Color("a56839")
-		if float(enemy.slow_left) > 0.0:
-			draw_circle(at, 23, Color("8ec5d9"))
-		draw_circle(at, 19, color)
-		_center_text(str(enemy.kind), at, 26, Color("fff7e9"))
-		_health_bar(at + Vector2(-21, -27), 42, float(enemy.hp) / float(enemy.max_hp), ACCENT)
+			color = Color("eb3027")
+			_draw_bone_particles(at, int(enemy.col))
+		if float(enemy.slow_left) > 0.0 or float(enemy.permanent_speed) < 1.0:
+			# 减速标记不遮住红色字形，也不使用棋子底板。
+			var snow_at := at + Vector2(24, 12)
+			for arm in range(3):
+				var direction := Vector2.from_angle(arm * PI / 3.0) * 5.0
+				draw_line(snow_at - direction, snow_at + direction, Color("409ebd"), 1.5)
+		_center_text(str(enemy.kind), at, 34, color)
+		_health_bar(at + Vector2(-21, -27), 42, float(enemy.hp) / float(enemy.max_hp), ENEMY_COLOR)
+		if enemy.kind == "翼":
+			# 翼仍使用红色字形，两侧短翼线表明飞行状态。
+			var flutter := sin(float(battle.elapsed) * 9.0) * 5.0
+			for side in [-1, 1]:
+				draw_line(at + Vector2(side * 20, -2), at + Vector2(side * 31, -7 + flutter), ENEMY_COLOR, 2.0)
+		if bool(enemy.burning):
+			var fire_at := at + Vector2(-24, 12)
+			draw_colored_polygon(PackedVector2Array([fire_at + Vector2(-4, 4), fire_at + Vector2(0, -7), fire_at + Vector2(4, 4)]), Color("e06a24"))
 	for arrow in battle.arrows:
 		var at := _board_position(int(arrow.col), float(arrow.y))
-		var color := Color("409ebd") if arrow.kind == "冰" else INK_COLOR
+		var color := Color("409ebd") if arrow.kind in ["冰", "霜"] else INK_COLOR
+		if arrow.kind == "焰":
+			color = Color("df6426")
+		if arrow.kind == "霜":
+			draw_circle(at, 4.0, color)
+			continue
 		draw_line(at + Vector2(0, 10), at - Vector2(0, 10), color, 2.0)
 		draw_line(at - Vector2(0, 10), at + Vector2(-4, -4), color, 2.0)
 		draw_line(at - Vector2(0, 10), at + Vector2(4, -4), color, 2.0)
 	for effect in battle.effects:
 		var at := _board_position(int(effect.col), float(effect.y))
-		if effect.kind == "blast":
+		if effect.kind == "column_beam":
+			var source := Vector2(at.x, ORIGIN.y)
+			var target := Vector2(at.x, BOARD.end.y)
+			draw_line(source, target, Color(0.3, 0.4, 0.5, 0.35), 4.0)
+			draw_line(source, target, Color(1.0, 1.0, 1.0, minf(1.0, float(effect.left) / 0.12)), 2.0)
+		elif effect.kind == "beam":
+			var source := _board_position(int(effect.from_col), float(effect.from_y)) + Vector2(-12, 0)
+			var target := at + Vector2(17, 0)
+			draw_line(source, target, Color(0.3, 0.4, 0.5, 0.35), 4.0)
+			draw_line(source, target, Color(1.0, 1.0, 1.0, minf(1.0, float(effect.left) / 0.12)), 2.0)
+		elif effect.kind == "blast":
 			draw_rect(Rect2(at - CELL / 2.0, CELL), Color(0.95, 0.55, 0.15, float(effect.left)))
 		else:
 			_center_text("+50", at + Vector2(0, -12), 22, Color("3f795b"))
-	draw_line(Vector2(70, 744), Vector2(550, 744), ACCENT, 4.0)
+	draw_line(Vector2(BOARD.position.x, BOARD.end.y), BOARD.end, ACCENT, 4.0)
 	if paused:
 		draw_rect(BOARD, Color(0.1, 0.2, 0.2, 0.45))
 		_center_text("暂停", BOARD.get_center(), 38, Color.WHITE)
 
 func _board_position(column: int, y: float) -> Vector2:
 	return ORIGIN + Vector2((column + 0.5) * CELL.x, y * CELL.y)
+
+func _draw_bone_particles(at: Vector2, column: int) -> void:
+	# 小火星向字形周围散开；使用战斗时间，暂停和结算时自动冻结。
+	for index in range(12):
+		var progress := fposmod(float(battle.elapsed) * 0.85 + index / 12.0 + column * 0.17, 1.0)
+		var angle := index * TAU / 12.0 + sin(float(battle.elapsed) * 1.4 + index) * 0.18
+		var direction := Vector2(cos(angle), sin(angle))
+		var spark_at := at + direction * (19.0 + progress * 16.0) + Vector2(0, -progress * 7.0)
+		var tint := Color(0.95, 0.12, 0.08, sin(progress * PI) * 0.9)
+		draw_line(spark_at, spark_at + direction * (2.0 + progress * 3.0), tint, 2.0)
 
 func _center_text(value: String, at: Vector2, font_size: int, color: Color) -> void:
 	var dimensions: Vector2 = FONT.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
