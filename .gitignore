@@ -1,0 +1,14 @@
+# Godot 4 自动生成的缓存目录（每次打开项目会重建）
+.godot/
+
+# 导出的游戏成品
+/export/
+
+# 本机配置与导出凭据
+.env
+.env.*
+!.env.example
+.godot/export_credentials.cfg
+export_credentials.cfg
+.DS_Store
+Thumbs.db
